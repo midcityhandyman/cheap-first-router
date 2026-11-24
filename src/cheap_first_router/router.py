@@ -15,7 +15,8 @@ from dataclasses import dataclass, field
 from typing import Iterable
 
 from .checks import run_checks
-from .models import CallRecord, Outcome, Task, Usage, estimate_tokens, stable_fraction
+from .models import (CallRecord, Outcome, Task, Usage, estimate_tokens, normalise_tags,
+                     stable_fraction)
 from .providers import Provider
 
 import json
@@ -57,23 +58,35 @@ class Router:
         self.strong = strong
         self.sample_rate = sample_rate
         self.seed = seed
-        self.sensitive_tags = frozenset(str(t).lower() for t in sensitive_tags)
+        self.sensitive_tags = normalise_tags(sensitive_tags)
+        if not self.sensitive_tags:
+            raise ValueError("sensitive_tags must name at least one tag")
         self.ledger: list = []
 
     # public API
 
     def is_sensitive(self, task: Task) -> bool:
-        return bool({str(t).lower() for t in task.tags} & self.sensitive_tags)
+        return bool(normalise_tags(task.tags) & self.sensitive_tags)
 
     def is_sampled(self, task: Task) -> bool:
         return stable_fraction("sample", self.seed, task.id) < self.sample_rate
 
     def run(self, tasks: Iterable) -> RunResult:
-        result = RunResult(ledger=self.ledger)
+        """Route a batch. The result carries only this run's calls; self.ledger keeps them all."""
+        tasks = list(tasks)
+        seen: set = set()
+        for task in tasks:
+            # Sampling, fault injection and the sensitive audit are all keyed by task id.
+            if task.id in seen:
+                raise ValueError(f"duplicate task id: {task.id}")
+            seen.add(task.id)
+        start = len(self.ledger)
+        result = RunResult()
         for task in tasks:
             outcome = self.route(task)
             result.outcomes.append(outcome)
             result.baseline_cost += self._baseline(task, outcome)
+        result.ledger = self.ledger[start:]
         return result
 
     def route(self, task: Task) -> Outcome:

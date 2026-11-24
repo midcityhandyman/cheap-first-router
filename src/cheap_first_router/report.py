@@ -11,7 +11,8 @@ def build_report(result: RunResult) -> dict:
     outcomes, ledger = result.outcomes, result.ledger
     sensitive_ids = {o.task_id for o in outcomes if o.sensitive}
     routes = Counter(o.route for o in outcomes)
-    bulk = len(outcomes) - len(sensitive_ids)
+    sensitive = sum(1 for o in outcomes if o.sensitive)
+    bulk = len(outcomes) - sensitive
     escalated = routes["escalated_checks"] + routes["escalated_sample"]
     sampled = sum(1 for o in outcomes if o.sampled)
     overturned = routes["escalated_sample"]
@@ -37,7 +38,7 @@ def build_report(result: RunResult) -> dict:
     return {
         "tasks": len(outcomes),
         "bulk_tasks": bulk,
-        "sensitive_tasks": len(sensitive_ids),
+        "sensitive_tasks": sensitive,
         "routes": {route: routes.get(route, 0) for route in ROUTES},
         "escalations": escalated,
         "escalation_rate": _ratio(escalated, bulk),

@@ -215,3 +215,71 @@ def test_cli_runs_a_jsonl_file_and_writes_json(tmp_path, capsys):
     report = json.loads(out.read_text(encoding="utf-8"))
     assert report["tasks"] == 2 and report["sensitive_tasks"] == 1
     assert "sensitive_strong_only" in capsys.readouterr().out
+
+
+# input handling fixes
+
+def test_a_bare_string_tag_still_pins_the_task_to_strong():
+    # tags="sensitive" used to be split into letters, which sent the task to the cheap tier.
+    cheap = SpyCheap(hard_fault_rate=0, soft_fault_rate=0)
+    router = Router(cheap, MockStrongProvider(), sample_rate=0.0)
+    from_json = Task.from_dict({"id": "J1", "kind": "classify", "text": "Refund please.",
+                                "labels": list(LABELS), "tags": "Sensitive"})
+    direct = Task("D1", "classify", "Refund please.", "sensitive, internal", labels=LABELS)
+    assert from_json.tags == frozenset({"sensitive"})
+    assert direct.tags == frozenset({"sensitive", "internal"})
+    assert [router.route(t).route for t in (from_json, direct)] == ["sensitive_strong_only"] * 2
+    assert cheap.seen == []
+
+
+def test_router_sensitive_tags_accepts_a_bare_string_and_rejects_an_empty_set():
+    router = clean_router(sensitive_tags="PII")
+    assert router.sensitive_tags == frozenset({"pii"})
+    assert router.route(classify_task(tags=("pii",))).route == "sensitive_strong_only"
+    with pytest.raises(ValueError):
+        clean_router(sensitive_tags=())
+
+
+def test_from_dict_rejects_tasks_that_cannot_be_routed():
+    base = {"id": "B1", "text": "hello"}
+    for bad in ({**base, "kind": "translate"},
+                {**base, "kind": "classify"},
+                {**base, "kind": "extract", "fields": []},
+                {**base, "kind": "summarise", "max_words": 0},
+                {"id": "B2", "kind": "classify", "labels": ["a"]}):
+        with pytest.raises(ValueError):
+            Task.from_dict(bad)
+    assert Task.from_dict({**base, "kind": "classify", "labels": "billing"}).labels == ("billing",)
+
+
+def test_duplicate_task_ids_are_rejected_before_any_call():
+    router = clean_router()
+    with pytest.raises(ValueError, match="duplicate task id"):
+        router.run([classify_task("C1"), classify_task("C1", tags=("sensitive",))])
+    assert router.ledger == []
+
+
+def test_each_run_reports_only_its_own_calls():
+    router = clean_router()
+    first = router.run([classify_task("C1"), classify_task("C2")])
+    second = router.run([classify_task("C3")])
+    assert [c.task_id for c in first.ledger] == ["C1", "C2"]
+    assert [c.task_id for c in second.ledger] == ["C3"]
+    assert build_report(second)["providers"]["mock-cheap"]["calls"] == 1
+    assert len(router.ledger) == 3
+
+
+def test_cli_reports_bad_input_with_exit_code_2(tmp_path, capsys):
+    from cheap_first_router.__main__ import main
+
+    tasks = tmp_path / "tasks.jsonl"
+    tasks.write_text('{"id": "A", "kind": "translate", "text": "hi"}\n', encoding="utf-8")
+    assert main(["--tasks", str(tasks)]) == 2
+    assert "line 1" in capsys.readouterr().err
+    assert main(["--tasks", str(tmp_path / "missing.jsonl")]) == 2
+    assert main(["--sample-rate", "1.5"]) == 2
+
+
+def test_sample_rate_from_env_is_validated():
+    with pytest.raises(ValueError):
+        Settings.from_env({"CFR_SAMPLE_RATE": "2"})

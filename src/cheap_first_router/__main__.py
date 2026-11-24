@@ -1,4 +1,8 @@
-"""Command line entry: python -m cheap_first_router [--tasks FILE | --demo N]."""
+"""Command line entry: python -m cheap_first_router [--tasks FILE | --demo N].
+
+The command line always uses the two offline mock providers. Exit code 0 on a clean run,
+1 if the sensitive audit fails, 2 on bad input.
+"""
 
 from __future__ import annotations
 
@@ -15,8 +19,16 @@ from .synthetic import make_tasks
 
 
 def load_tasks(path: str) -> list:
+    tasks = []
     with open(path, encoding="utf-8") as handle:
-        return [Task.from_dict(json.loads(line)) for line in handle if line.strip()]
+        for number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            try:
+                tasks.append(Task.from_dict(json.loads(line)))
+            except (ValueError, TypeError) as exc:  # JSONDecodeError is a ValueError
+                raise ValueError(f"{path} line {number}: {exc}") from exc
+    return tasks
 
 
 def main(argv=None) -> int:
@@ -30,11 +42,15 @@ def main(argv=None) -> int:
     parser.add_argument("--trace", action="store_true", help="print one routing line per task")
     args = parser.parse_args(argv)
 
-    tasks = load_tasks(args.tasks) if args.tasks else make_tasks(args.demo)
-    router = Router(MockCheapProvider(seed=args.seed), MockStrongProvider(),
-                    sample_rate=args.sample_rate, seed=args.seed,
-                    sensitive_tags=settings.sensitive_tags)
-    result = router.run(tasks)
+    try:
+        tasks = load_tasks(args.tasks) if args.tasks else make_tasks(args.demo)
+        router = Router(MockCheapProvider(seed=args.seed), MockStrongProvider(),
+                        sample_rate=args.sample_rate, seed=args.seed,
+                        sensitive_tags=settings.sensitive_tags)
+        result = router.run(tasks)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     if args.trace:
         for o in result.outcomes:
             note = ",".join(o.check_failures)
