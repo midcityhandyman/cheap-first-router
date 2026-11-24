@@ -1,0 +1,78 @@
+T001  extract    cheap_accepted         final=cheap  
+T002  classify   cheap_accepted         final=cheap  
+T003  summarise  escalated_checks       final=strong summary_too_long,summary_not_shorter
+T004  extract    sensitive_strong_only  final=strong 
+T005  classify   cheap_verified         final=cheap  
+T006  summarise  cheap_accepted         final=cheap  
+T007  extract    escalated_checks       final=strong missing_field:phone
+T008  classify   cheap_accepted         final=cheap  
+T009  summarise  cheap_verified         final=cheap  
+T010  extract    cheap_accepted         final=cheap  
+T011  classify   sensitive_strong_only  final=strong 
+T012  summarise  cheap_verified         final=cheap  
+T013  extract    cheap_accepted         final=cheap  
+T014  classify   cheap_accepted         final=cheap  
+T015  summarise  escalated_sample       final=strong 
+T016  extract    escalated_checks       final=strong missing_field:phone
+T017  classify   cheap_accepted         final=cheap  
+T018  summarise  sensitive_strong_only  final=strong 
+T019  extract    cheap_accepted         final=cheap  
+T020  classify   cheap_verified         final=cheap  
+T021  summarise  cheap_accepted         final=cheap  
+T022  extract    cheap_accepted         final=cheap  
+T023  classify   cheap_accepted         final=cheap  
+T024  summarise  escalated_checks       final=strong summary_too_long,summary_not_shorter
+T025  extract    sensitive_strong_only  final=strong 
+T026  classify   cheap_accepted         final=cheap  
+T027  summarise  cheap_accepted         final=cheap  
+T028  extract    cheap_accepted         final=cheap  
+T029  classify   escalated_checks       final=strong label_not_allowed
+T030  summarise  cheap_accepted         final=cheap  
+T031  extract    cheap_accepted         final=cheap  
+T032  classify   sensitive_strong_only  final=strong 
+T033  summarise  cheap_accepted         final=cheap  
+T034  extract    escalated_checks       final=strong missing_field:phone
+T035  classify   cheap_accepted         final=cheap  
+T036  summarise  cheap_verified         final=cheap  
+T037  extract    cheap_verified         final=cheap  
+T038  classify   cheap_accepted         final=cheap  
+T039  summarise  sensitive_strong_only  final=strong 
+T040  extract    cheap_verified         final=cheap  
+
+CHEAP-FIRST ROUTER REPORT
+==========================================================
+Tasks: 40  (bulk 34, sensitive 6)
+
+Routing
+  sensitive_strong_only       6
+  cheap_accepted             20
+  cheap_verified              7
+  escalated_checks            6
+  escalated_sample            1
+
+Escalation
+  escalated to strong         7  (20.6% of bulk tasks)
+    check: label_not_allowed     1
+    check: missing_field         3
+    check: summary_not_shorter   2
+    check: summary_too_long      2
+  sampled for review          8
+  sample overturned           1  (12.5% of sampled)
+  accepted unreviewed        20
+  needs human review          0
+
+By task kind
+  classify     tasks  13   escalated   1
+  extract      tasks  14   escalated   3
+  summarise    tasks  13   escalated   3
+
+Cost by provider (USD, illustrative prices)
+  provider       calls   in tok  out tok        cost
+  mock-cheap        34     1279      743    0.001063
+  mock-strong       20      959      286    0.011945
+  total                                     0.013008
+  baseline, all strong (estimate)           0.026125
+  saved                                     0.013117  (50.2%)
+
+Sensitive audit
+  sensitive tasks sent off the strong model: 0  OK
